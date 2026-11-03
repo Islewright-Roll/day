@@ -10045,6 +10045,7 @@ fn a_canvas_draws_a_decoded_image_by_its_handle() {
             rect,
             opacity,
             source,
+            smooth,
         }) => {
             // The id is the one the toolkit minted for these bytes, and the rect is the
             // canvas's size the draw closure was handed.
@@ -10054,8 +10055,9 @@ fn a_canvas_draws_a_decoded_image_by_its_handle() {
             );
             assert_eq!(rect.size, Size::new(120.0, 90.0));
             assert_eq!(*opacity, 1.0);
-            // `image` is the whole-bitmap form: no region.
+            // `image` is the whole-bitmap form: no region, smoothed.
             assert_eq!(*source, None);
+            assert!(*smooth);
         }
         other => panic!("expected an image op, got {other:?}"),
     }
@@ -10111,12 +10113,14 @@ fn a_canvas_draws_one_region_of_a_decoded_image() {
                 rect: day_spec::Rect::new(10.0, 20.0, 40.0, 20.0),
                 opacity: 1.0,
                 source: Some(cell),
+                smooth: true,
             },
             day_spec::DrawOp::Image {
                 image: id,
                 rect: day_spec::Rect::new(50.0, 20.0, 40.0, 20.0),
                 opacity: 0.25,
                 source: Some(cell),
+                smooth: true,
             },
         ]
     );

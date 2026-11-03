@@ -76,6 +76,19 @@ The region is in the bitmap's own **pixels**, not points: a sheet lays its cells
 clamped, never an error: the part inside draws where the mapping into the rect puts it, and an
 empty intersection draws nothing. [`Draw::image_region_with_opacity`](https://docs.rs/day-pieces/latest/day_pieces/struct.Draw.html#method.image_region_with_opacity) adds the alpha multiplier.
 
+[`Draw::image_pixelated`](https://docs.rs/day-pieces/latest/day_pieces/struct.Draw.html#method.image_pixelated) draws the whole image without smoothing, for pixel art: scaled
+up, each image pixel becomes a hard-edged block. It is exact where the rect is a whole multiple
+of the image's size on whole device pixels.
+
+```rust
+let tiles = day::decode_image(tile_png).await?;       // 16 x 16 art
+canvas(move |d, _| d.image_pixelated(&tiles, Rect::new(0.0, 0.0, 64.0, 64.0)))
+```
+
+Android turns the paint's filter off, the web clears `imageSmoothingEnabled`, and iOS and macOS
+set Core Graphics' interpolation quality to none. The other toolkits draw it
+smoothed, which blurs the picture but never drops it.
+
 A released bitmap draws nothing rather than a placeholder: a handle can be dropped between the
 record and the replay, and a frame that flashes a grey box is worse than one that omits the image.
 

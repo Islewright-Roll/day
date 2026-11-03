@@ -5020,11 +5020,16 @@ pub enum DrawOp {
     /// an empty intersection draws nothing. A backend without a sub-rect draw clips to `rect`
     /// and draws the whole image scaled so the region lands there ([`clamp_image_source`] is
     /// the shared arithmetic).
+    ///
+    /// `smooth` false asks for nearest-neighbour sampling when the image is scaled, so pixel
+    /// art drawn at a whole multiple of its size keeps hard edges. A backend that cannot turn
+    /// filtering off draws it smoothed, which is the picture blurred, never missing.
     Image {
         image: BitmapId,
         rect: Rect,
         opacity: f64,
         source: Option<Rect>,
+        smooth: bool,
     },
     /// Intersect the clip with `shape`; everything drawn afterwards is confined to it.
     ///
@@ -9248,7 +9253,7 @@ pub enum OpCode {
     /// [`OpCode::Stamp`] header says how many of the pairs are real.
     StampPoints = 21,
     /// Draw a decoded image: `a,b` = origin, `c,d` = size, `e` = the [`BitmapId`], `f` = opacity
-    /// in `0.0..=1.0` (docs/images.md).
+    /// in `0.0..=1.0`, `g` = 1 for nearest-neighbour sampling and 0 for smoothed (docs/images.md).
     ///
     /// The id rides the numeric channel because it is a number, and an `f64` carries a `u64` id
     /// exactly up to 2^53; ids are minted from 1 per process, so that ceiling is unreachable.
@@ -10103,6 +10108,7 @@ fn encode_ops_into(ops: &[DrawOp], mut geometry: Option<&mut Vec<f64>>) -> (Vec<
                 rect,
                 opacity,
                 source,
+                smooth,
             } => {
                 if let Some(src) = source {
                     push(
@@ -10126,7 +10132,8 @@ fn encode_ops_into(ops: &[DrawOp], mut geometry: Option<&mut Vec<f64>>) -> (Vec<
                     rect.size.height,
                     image.0 as f64,
                     *opacity,
-                    0.0,
+                    // g: 1 for nearest-neighbour sampling, 0 (every older record) for smoothed
+                    if *smooth { 0.0 } else { 1.0 },
                     Color::CLEAR,
                     &mut nums,
                 );
@@ -10563,12 +10570,21 @@ mod encode_ops_tests {
                 rect: r,
                 opacity: 0.5,
                 source: None,
+                smooth: true,
             },
             DrawOp::Image {
                 image: BitmapId(7),
                 rect: r,
                 opacity: 1.0,
                 source: Some(Rect::new(16.0, 32.0, 8.0, 8.0)),
+                smooth: true,
+            },
+            DrawOp::Image {
+                image: BitmapId(7),
+                rect: r,
+                opacity: 1.0,
+                source: None,
+                smooth: false,
             },
         ];
         let (nums, texts) = encode_ops(&ops);
@@ -10626,6 +10642,7 @@ mod encode_ops_tests {
                 Image,
                 ImageSource, // a region precedes its image record; a whole-image draw has none
                 Image,
+                Image, // a pixelated draw differs only in its `g` slot
             ]
         };
         assert_eq!(decoded, expected);
@@ -10635,7 +10652,14 @@ mod encode_ops_tests {
             .chunks(9)
             .find(|r| r[0] == f64::from(OpCode::Image as i32))
             .expect("Image record");
-        assert_eq!(&img[1..7], &[1.0, 2.0, 3.0, 4.0, 7.0, 0.5]);
+        assert_eq!(&img[1..8], &[1.0, 2.0, 3.0, 4.0, 7.0, 0.5, 0.0]);
+        // The pixelated draw carries 1 in `g`, the slot every older record leaves 0.
+        let pixelated = nums
+            .chunks(9)
+            .filter(|r| r[0] == f64::from(OpCode::Image as i32))
+            .nth(2)
+            .expect("pixelated Image record");
+        assert_eq!(&pixelated[1..8], &[1.0, 2.0, 3.0, 4.0, 7.0, 1.0, 1.0]);
         // The region rides its own prefix record, in bitmap pixels, with nothing else in it.
         let src = nums
             .chunks(9)

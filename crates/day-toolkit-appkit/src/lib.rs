@@ -505,6 +505,7 @@ fn cg_fast_op(cg: &objc2_core_graphics::CGContext, op: &DrawOp) -> bool {
             rect,
             opacity,
             source,
+            smooth,
         } => {
             // The bitmap's pixels straight to the context (`drawInRect:` on the image object
             // costs tens of microseconds per call, and a pattern fill is hundreds of copies).
@@ -547,6 +548,13 @@ fn cg_fast_op(cg: &objc2_core_graphics::CGContext, op: &DrawOp) -> bool {
             // TOP of `rect` only in a y-up space, so the image is drawn through a local flip.
             CGContext::save_g_state(Some(cg));
             CGContext::set_alpha(Some(cg), opacity.clamp(0.0, 1.0));
+            if !*smooth {
+                // Pixel art: nearest-neighbour, scoped to this image by the save above
+                CGContext::set_interpolation_quality(
+                    Some(cg),
+                    objc2_core_graphics::CGInterpolationQuality::None,
+                );
+            }
             CGContext::translate_ctm(Some(cg), dest.origin.x, dest.origin.y + dest.size.height);
             CGContext::scale_ctm(Some(cg), 1.0, -1.0);
             CGContext::draw_image(
@@ -6399,6 +6407,9 @@ fn draw_op(op: &DrawOp) {
                 rect,
                 opacity,
                 source,
+                // Honoured by `cg_fast_op`, the normal replay; this NSImage fallback (no current
+                // CGContext) draws it smoothed
+                smooth: _,
             } => {
                 let held = BITMAPS.with(|m| {
                     m.borrow()

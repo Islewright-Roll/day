@@ -5049,14 +5049,15 @@ fn encode_ops(ops: &[DrawOp]) -> (Vec<f64>, Vec<u8>) {
             }
             DrawOp::Save => buf.push(3.0),
             DrawOp::Restore => buf.push(4.0),
-            // [8, id, x, y, w, h, opacity] (docs/images.md). The id is a number, so it rides
-            // this buffer like any coordinate. Note this encoder's numbering is its OWN — it is
+            // [8, id, x, y, w, h, opacity, nearest] (docs/images.md). The id is a number, so it rides
+            // this buffer like any coordinate. Note this encoder's numbering is its OWN: it is
             // not day-spec's frozen wire table, and the two have never agreed.
             DrawOp::Image {
                 image,
                 rect,
                 opacity,
                 source: None,
+                smooth,
             } => buf.extend([
                 8.0,
                 image.0 as f64,
@@ -5065,15 +5066,17 @@ fn encode_ops(ops: &[DrawOp]) -> (Vec<f64>, Vec<u8>) {
                 rect.size.width,
                 rect.size.height,
                 *opacity,
+                if *smooth { 0.0 } else { 1.0 },
             ]),
-            // [9, id, x, y, w, h, opacity, sx, sy, sw, sh]: the same with a source region in
-            // bitmap pixels, the 9-argument `drawImage`. Its own code rather than four more
-            // slots on 8, so a whole-image draw encodes exactly as it always did.
+            // [9, id, x, y, w, h, opacity, nearest, sx, sy, sw, sh]: the same with a source
+            // region in bitmap pixels, the 9-argument `drawImage`. Its own code rather than four
+            // more slots on 8, so a whole-image draw encodes exactly as it always did.
             DrawOp::Image {
                 image,
                 rect,
                 opacity,
                 source: Some(src),
+                smooth,
             } => buf.extend([
                 9.0,
                 image.0 as f64,
@@ -5082,6 +5085,7 @@ fn encode_ops(ops: &[DrawOp]) -> (Vec<f64>, Vec<u8>) {
                 rect.size.width,
                 rect.size.height,
                 *opacity,
+                if *smooth { 0.0 } else { 1.0 },
                 src.origin.x,
                 src.origin.y,
                 src.size.width,

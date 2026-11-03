@@ -3218,19 +3218,21 @@ function paint(ctx, ops, strs) {
     } else if (op === 3) ctx.save();
     else if (op === 4) ctx.restore();
     else if (op === 5) { const a = next(), b = next(), c = next(), d = next(), e = next(), f = next(); ctx.transform(a, b, c, d, e, f); }
-    else if (op === 8 || op === 9) { // image: id, x, y, w, h, opacity (docs/images.md)
+    else if (op === 8 || op === 9) { // image: id, x, y, w, h, opacity, nearest (docs/images.md)
       // Every slot is read before the bitmap is looked up: this stream is variable-length, so a
       // branch that consumed fewer slots would desync every record after it. Op 9 is the same
-      // with a source region (sx, sy, sw, sh) in the bitmap's own pixels after the opacity.
+      // with a source region (sx, sy, sw, sh) in the bitmap's own pixels after `nearest`.
       const id = next(), x = next(), y = next(), w = next(), h = next(), alpha = next();
+      const nearest = next() !== 0;
       let sx = 0, sy = 0, sw = 0, sh = 0;
       if (op === 9) { sx = next(); sy = next(); sw = next(); sh = next(); }
       const b = bitmaps.get(id);
       // A released bitmap draws nothing rather than a placeholder: a canvas re-records on every
       // tracked read, so a handle can be dropped between the record and this replay.
       if (b && b.bitmap && w > 0 && h > 0) {
-        const was = ctx.globalAlpha;
+        const was = ctx.globalAlpha, smoothed = ctx.imageSmoothingEnabled;
         ctx.globalAlpha = was * Math.max(0, Math.min(1, alpha));
+        ctx.imageSmoothingEnabled = !nearest;
         if (op === 8) ctx.drawImage(b.bitmap, x, y, w, h);
         else {
           // The region clamped to the bitmap with its mapping into the rect kept
@@ -3245,6 +3247,7 @@ function paint(ctx, ops, strs) {
               x + (x0 - sx) * kx, y + (y0 - sy) * ky, (x1 - x0) * kx, (y1 - y0) * ky);
           }
         }
+        ctx.imageSmoothingEnabled = smoothed;
         ctx.globalAlpha = was;
       }
     }

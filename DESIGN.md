@@ -3480,6 +3480,16 @@ made native nav containers possible without a scaffold migration.
 > `drawImage` — and UIKit and GTK clip to the rect and draw the whole image scaled, which is
 > exact and keeps a `UIImage`'s orientation.
 
+> **2026-11: pixelated images.** `DrawOp::Image` also carries `smooth: bool`, false for
+> nearest-neighbour sampling (`Draw::image_pixelated`, [docs/images.md](docs/images.md)). It
+> rides the image record's spare `g` slot (1 for nearest, and 0, as every older record carries,
+> for smoothed), and the web encoder's ops 8 and 9 take a `nearest` slot after the opacity.
+> Android turns the Paint's filter off outright, since from API 28 a Paint adds the filter flag
+> to whatever it is given; the web clears `imageSmoothingEnabled`; UIKit and AppKit set the CG
+> interpolation quality to none (AppKit in its CGContext replay; its `NSImage` fallback, used
+> without a current context, stays smoothed). The backends that do not read it draw the image
+> smoothed, which blurs it but never drops it.
+
 ```rust
 pub fn gauge(value: Signal<f64>) -> impl Piece {
     canvas(move |d, size| {

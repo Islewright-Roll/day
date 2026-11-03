@@ -310,6 +310,20 @@ impl Draw {
             rect,
             opacity: opacity.clamp(0.0, 1.0),
             source: None,
+            smooth: true,
+        });
+    }
+
+    /// [`Draw::image`] without smoothing: scaled up, each image pixel becomes a hard-edged
+    /// block, as pixel art wants. Exact where `rect` is a whole multiple of the image's size on
+    /// whole device pixels. A backend that cannot turn filtering off draws it smoothed.
+    pub fn image_pixelated(&mut self, image: &day_core::Bitmap, rect: day_spec::Rect) {
+        self.ops.push(DrawOp::Image {
+            image: image.id(),
+            rect,
+            opacity: 1.0,
+            source: None,
+            smooth: false,
         });
     }
 
@@ -348,6 +362,7 @@ impl Draw {
             rect,
             opacity: opacity.clamp(0.0, 1.0),
             source: Some(source),
+            smooth: true,
         });
     }
 

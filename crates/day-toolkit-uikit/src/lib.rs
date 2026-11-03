@@ -10337,6 +10337,7 @@ mod imp {
                     rect,
                     opacity,
                     source,
+                    smooth,
                 } => {
                     let held = BITMAPS.with(|m| {
                         m.borrow()
@@ -10350,6 +10351,15 @@ mod imp {
                         );
                         // UIImage's plain drawInRect always draws at full opacity, even if
                         // CGContext's alpha was set. Use its explicit compositing overload.
+                        // Pixel art asks for no filtering; the save scopes it to this one image
+                        let ctx = objc2_ui_kit::UIGraphicsGetCurrentContext();
+                        CGContext::save_g_state(ctx.as_deref());
+                        if !*smooth {
+                            CGContext::set_interpolation_quality(
+                                ctx.as_deref(),
+                                objc2_core_graphics::CGInterpolationQuality::None,
+                            );
+                        }
                         match source {
                             None => img.drawInRect_blendMode_alpha(
                                 dest,
@@ -10365,8 +10375,6 @@ mod imp {
                             // clip does the rest.
                             Some(src) => {
                                 if day_spec::clamp_image_source(*src, *rect, pixels).is_some() {
-                                    let ctx = objc2_ui_kit::UIGraphicsGetCurrentContext();
-                                    CGContext::save_g_state(ctx.as_deref());
                                     CGContext::clip_to_rect(ctx.as_deref(), dest);
                                     let kx = rect.size.width / src.size.width;
                                     let ky = rect.size.height / src.size.height;
@@ -10382,10 +10390,10 @@ mod imp {
                                         objc2_core_graphics::CGBlendMode::Normal,
                                         *opacity,
                                     );
-                                    CGContext::restore_g_state(ctx.as_deref());
                                 }
                             }
                         }
+                        CGContext::restore_g_state(ctx.as_deref());
                     }
                 }
                 DrawOp::Save => {
@@ -10719,6 +10727,7 @@ mod imp {
                 rect,
                 opacity,
                 source,
+                smooth,
             } => {
                 // The bitmap's pixels straight to the context (`drawInRect:` on the image object
                 // costs tens of microseconds per call, and a pattern fill is hundreds of copies).
@@ -10761,6 +10770,13 @@ mod imp {
                 // TOP of `rect` only in a y-up space, so the image is drawn through a local flip.
                 CGContext::save_g_state(Some(cg));
                 CGContext::set_alpha(Some(cg), opacity.clamp(0.0, 1.0));
+                if !*smooth {
+                    // Pixel art: nearest-neighbour, scoped to this image by the save above
+                    CGContext::set_interpolation_quality(
+                        Some(cg),
+                        objc2_core_graphics::CGInterpolationQuality::None,
+                    );
+                }
                 CGContext::translate_ctm(Some(cg), dest.origin.x, dest.origin.y + dest.size.height);
                 CGContext::scale_ctm(Some(cg), 1.0, -1.0);
                 CGContext::draw_image(
