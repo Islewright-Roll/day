@@ -30,6 +30,8 @@ use super::{LOOPS, RATE, VOICES};
 
 struct Voice {
     node: Retained<AVAudioPlayerNode>,
+    /// The clip it was last given.
+    path: String,
     started: Instant,
     /// When the clip it was given runs out.
     until: Instant,
@@ -115,6 +117,7 @@ impl Engine {
                 engine.connect_to_format(&node, &mixer, Some(&format));
                 voices.push(Voice {
                     node,
+                    path: String::new(),
                     started: now,
                     until: now,
                     priority: i32::MIN,
@@ -239,6 +242,19 @@ impl Engine {
         voice.started = now;
         voice.until = now + length;
         voice.priority = priority;
+        voice.path.clear();
+        voice.path.push_str(path);
+    }
+
+    fn stop(&mut self, path: &str) {
+        let now = Instant::now();
+        for v in &mut self.voices {
+            if v.until > now && v.path == path {
+                // SAFETY: stopping a node this engine owns.
+                unsafe { v.node.stop() };
+                v.until = now;
+            }
+        }
     }
 
     fn loop_start(&mut self, id: i32, path: &str, volume: f32, pan: f32) {
@@ -331,6 +347,10 @@ pub fn preload(path: &str) {
 
 pub fn play(path: &str, volume: f32, pan: f32, priority: i32) {
     with_engine(|e| e.play(path, volume, pan, priority));
+}
+
+pub fn stop(path: &str) {
+    with_engine(|e| e.stop(path));
 }
 
 pub fn loop_start(id: i32, path: &str, volume: f32, pan: f32) {

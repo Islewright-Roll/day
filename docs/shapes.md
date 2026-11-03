@@ -126,6 +126,10 @@ reports a `Drag` with phase, local pointer location, and cumulative translation.
 location is `location - translation`; the first reported drag event may arrive after the
 pointer has already moved. Drag handling does not use the tap containment test.
 
+[`.on_touch(f)`](https://docs.rs/day-pieces/latest/day_pieces/trait.Decorate.html#method.on_touch)
+reports every finger separately, with a pointer id, where the toolkit supports it; see
+[canvas](canvas.md) "Touches".
+
 On iOS and Android, a shape with no tap, drag, hover, context menu or key handler takes no
 touches: a tap on it reaches whatever is beneath it, so a border stroked over a row of controls
 with [`.overlay(...)`](https://docs.rs/day-pieces/latest/day_pieces/trait.Decorate.html#method.overlay)

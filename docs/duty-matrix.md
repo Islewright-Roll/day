@@ -37,6 +37,7 @@ implement them, and this table proves it.
 | [`scroll_offset`](https://docs.rs/day-spec/latest/day_spec/trait.Toolkit.html#method.scroll_offset) | · | · | · | · | · | ✓ | · | · | ✓ | ✓ |
 | [`set_event_sink`](https://docs.rs/day-spec/latest/day_spec/trait.Toolkit.html#tymethod.set_event_sink) | yes | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ |
 | [`enable_gesture`](https://docs.rs/day-spec/latest/day_spec/trait.Toolkit.html#method.enable_gesture) | · | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ |
+| [`enable_touches`](https://docs.rs/day-spec/latest/day_spec/trait.Toolkit.html#method.enable_touches) | · | · | ✓ | · | · | · | ✓ | · | · | · |
 | [`focus`](https://docs.rs/day-spec/latest/day_spec/trait.Toolkit.html#method.focus) | · | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ |
 | [`set_focusable`](https://docs.rs/day-spec/latest/day_spec/trait.Toolkit.html#method.set_focusable) | · | ✓ | ✓ | ✓ | ✓ | · | ✓ | · | ✓ | · |
 | [`attach_list`](https://docs.rs/day-spec/latest/day_spec/trait.Toolkit.html#method.attach_list) | · | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ |

@@ -255,7 +255,8 @@ public class DayCanvasView extends View {
     }
 
     /** The day name for a key the route carries (docs/menus.md), or null. Android draws no
-     *  menu bar, so no accelerator owns the delete keys and they ride the route too. A digit
+     *  menu bar, so no accelerator owns the delete keys or the Menu key and they ride the
+     *  route too. A digit
      *  is named by what it types, main row or keypad, and never under Ctrl, Alt or Meta,
      *  which belong to shortcuts. */
     static String keyName(int keyCode, KeyEvent ev) {
@@ -266,6 +267,8 @@ public class DayCanvasView extends View {
             case KeyEvent.KEYCODE_DPAD_DOWN: return "ArrowDown";
             case KeyEvent.KEYCODE_DEL: return "Backspace";
             case KeyEvent.KEYCODE_FORWARD_DEL: return "Delete";
+            // The Menu key, named as the web names it, for an app with a menu of its own
+            case KeyEvent.KEYCODE_MENU: return "ContextMenu";
             default: break;
         }
         if (ev.isCtrlPressed() || ev.isAltPressed() || ev.isMetaPressed()) return null;

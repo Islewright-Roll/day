@@ -937,6 +937,30 @@ fn op_on_drag(f: impl Fn(Drag) + 'static) -> impl FnOnce(Build) -> Build {
     }
 }
 
+fn op_on_touch(f: impl Fn(Touch) + 'static) -> impl FnOnce(Build) -> Build {
+    move |inner| {
+        Box::new(move |cx| {
+            let n = inner(cx);
+            with_tree(|t| t.enable_touches(n));
+            cx.on(n, move |ev| {
+                if let Event::Touch {
+                    phase,
+                    pointer,
+                    location,
+                } = ev
+                {
+                    f(Touch {
+                        phase: *phase,
+                        pointer: *pointer,
+                        location: *location,
+                    });
+                }
+            });
+            n
+        })
+    }
+}
+
 fn op_on_pinch(f: impl Fn(Pinch) + 'static) -> impl FnOnce(Build) -> Build {
     move |inner| {
         Box::new(move |cx| {
@@ -1455,6 +1479,9 @@ impl<P: Piece> Decorated<P> {
     pub fn on_drag(self, f: impl Fn(Drag) + 'static) -> Self {
         self.push(op_on_drag(f))
     }
+    pub fn on_touch(self, f: impl Fn(Touch) + 'static) -> Self {
+        self.push(op_on_touch(f))
+    }
     pub fn on_pinch(self, f: impl Fn(Pinch) + 'static) -> Self {
         self.push(op_on_pinch(f))
     }
@@ -1946,6 +1973,14 @@ pub trait Decorate: Piece + Sized {
 
     fn on_drag(self, f: impl Fn(Drag) + 'static) -> Decorated<Self> {
         Decorated::new(self).on_drag(f)
+    }
+
+    /// Fire for every finger on this piece separately (docs/canvas.md "Touches"), so two
+    /// fingers down at once each report their own `Began`, moves and `Ended`. Where a backend
+    /// reports touches this way, they replace this piece's `.on_tap` and `.on_drag` events;
+    /// elsewhere (desktops, and backends without it yet) those keep firing, so keep them too.
+    fn on_touch(self, f: impl Fn(Touch) + 'static) -> Decorated<Self> {
+        Decorated::new(self).on_touch(f)
     }
 
     /// Fire on each phase of a pinch/magnify over this piece (docs/canvas.md "Zoom and

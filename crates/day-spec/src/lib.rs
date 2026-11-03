@@ -900,6 +900,16 @@ pub enum Event {
         delta: Point,
         location: Point,
     },
+    /// One finger on a node that asked for every touch ([`Toolkit::enable_touches`]): `pointer`
+    /// names the finger from its `Began` to its `Ended`, and `location` is in the node's local
+    /// coordinates. Each finger reports separately, so two can be down at once. A cancelled
+    /// gesture ends every finger still down. A backend that reports touches this way sends them
+    /// instead of `Tap` and `Drag` for that node; one that does not keeps sending those.
+    Touch {
+        phase: DragPhase,
+        pointer: u32,
+        location: Point,
+    },
     /// The pointer moved over the node, or left it (docs/canvas.md "Interaction"). `location` is
     /// in the node's local coordinates. Phases follow the drag vocabulary: `Began` on entry,
     /// `Changed` for each move, `Ended` on exit, where `location` is the last point seen inside,
@@ -7696,6 +7706,11 @@ pub trait Toolkit: Sized + 'static {
     // `Event::Tap/LongPress/Drag` for `node` (enqueue-only). Default no gesture; a piece opts in
     // when it has a handler. Idempotent per (handle, kind).
     fn enable_gesture(&mut self, _h: &Self::Handle, _node: NodeId, _kind: GestureKind) {}
+
+    // touches: report every finger on `h` separately as `Event::Touch` for `node`, in place of
+    // the `Tap` and `Drag` its gestures would send, so an app can follow two fingers at once.
+    // Default nothing: a backend without it keeps delivering taps and drags.
+    fn enable_touches(&mut self, _h: &Self::Handle, _node: NodeId) {}
 
     // focus (docs/focus.md): move native keyboard focus to (or away from) this control.
     // `focused = true` requests focus (on mobile this also raises the soft keyboard for text

@@ -1757,11 +1757,27 @@ public final class DayBridge extends DayRuntime {
         });
     }
 
+    /** Every finger on `v` reported on its own (`Event::Touch`), in place of its taps and drags:
+     *  codes 20, 21 and 22 for down, move and up, string "x,y,pointerId". A cancel ends every
+     *  finger still down. Rides the drag listener, so a later `enableGesture` keeps it. */
+    public static void enableTouches(View v, final long id) {
+        boolean[] flags = gestureFlags.get(v);
+        if (flags == null) { flags = new boolean[3]; gestureFlags.put(v, flags); }
+        flags[2] = true;
+        enableGesture(v, id, true);
+    }
+
+    /** One finger's event for `enableTouches`. */
+    private static void touch(long id, int code, MotionEvent ev, int index) {
+        nativeOnEvent(id, K_GESTURE, code,
+                ev.getX(index) + "," + ev.getY(index) + "," + ev.getPointerId(index));
+    }
+
     public static void enableGesture(View v, final long id, final boolean isDrag) {
         boolean[] flags = gestureFlags.get(v);
-        if (flags == null) { flags = new boolean[2]; gestureFlags.put(v, flags); }
+        if (flags == null) { flags = new boolean[3]; gestureFlags.put(v, flags); }
         if (isDrag) flags[1] = true; else flags[0] = true;
-        final boolean[] f = flags; // {wantsTap, wantsDrag}
+        final boolean[] f = flags; // {wantsTap, wantsDrag, wantsTouches}
         if (!f[1]) {
             // Let View arbitrate taps, long presses and RecyclerView scroll interception.
             // Consuming ACTION_DOWN ourselves prevents native long-press menus and an
@@ -1784,6 +1800,25 @@ public final class DayBridge extends DayRuntime {
             float sx, sy;
             boolean pinched; // a second finger ended the drag; the rest of the stream is the pinch's
             public boolean onTouch(View view, MotionEvent ev) {
+                if (f[2]) {
+                    switch (ev.getActionMasked()) {
+                        case MotionEvent.ACTION_DOWN:
+                        case MotionEvent.ACTION_POINTER_DOWN:
+                            touch(id, 20, ev, ev.getActionIndex());
+                            return true;
+                        case MotionEvent.ACTION_MOVE:
+                            for (int i = 0; i < ev.getPointerCount(); i++) touch(id, 21, ev, i);
+                            return true;
+                        case MotionEvent.ACTION_UP:
+                        case MotionEvent.ACTION_POINTER_UP:
+                            touch(id, 22, ev, ev.getActionIndex());
+                            return true;
+                        case MotionEvent.ACTION_CANCEL:
+                            for (int i = 0; i < ev.getPointerCount(); i++) touch(id, 22, ev, i);
+                            return true;
+                    }
+                    return false;
+                }
                 float x = ev.getX(), y = ev.getY();
                 switch (ev.getActionMasked()) {
                     case MotionEvent.ACTION_DOWN:

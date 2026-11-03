@@ -244,6 +244,22 @@ impl Engine {
         voice.priority = priority;
     }
 
+    fn stop(&mut self, path: &str) {
+        let Some(clip) = self.clips.get(path) else {
+            return;
+        };
+        for v in &mut self.voices {
+            if v.clip.as_ref().is_some_and(|c| Rc::ptr_eq(c, clip)) && !v.idle() {
+                // SAFETY: the voice is this module's; its samples stay in `v.clip` while
+                // XAudio2 may still read them.
+                unsafe {
+                    let _ = v.voice.Stop(0, 0);
+                    let _ = v.voice.FlushSourceBuffers();
+                }
+            }
+        }
+    }
+
     fn loop_start(&mut self, id: i32, path: &str, volume: f32) {
         self.sweep();
         let Some(clip) = self.load(path) else {
@@ -380,6 +396,10 @@ pub fn preload(path: &str) {
 
 pub fn play(path: &str, volume: f32, _pan: f32, priority: i32) {
     with_engine(|e| e.play(path, volume, priority));
+}
+
+pub fn stop(path: &str) {
+    with_engine(|e| e.stop(path));
 }
 
 pub fn loop_start(id: i32, path: &str, volume: f32, _pan: f32) {

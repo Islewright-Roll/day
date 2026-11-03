@@ -1188,7 +1188,7 @@ The **`Decorate`** extension trait carries the universal modifiers: `.id(id!(nam
 `.grow(Dimension::Width)` (or `Height` / `Both`), `.aligned(Alignment::…)`, `.background()`,
 `.corner_radius()`, `.overlay()` / `.overlay_aligned()`, `.grid_span()` / `.grid_align()`
 ([docs/grid.md](docs/grid.md); inert outside a grid), `.a11y()`, `.on_tap()` / `.on_drag()` /
-`.on_pinch()` / `.on_pan()` / `.on_rotate()` (the continuous zoom/scroll/turn gestures, [docs/canvas.md](docs/canvas.md)), `.focused()`,
+`.on_pinch()` / `.on_pan()` / `.on_rotate()` (the continuous zoom/scroll/turn gestures, [docs/canvas.md](docs/canvas.md)), `.on_touch()` (every finger on its own, with a pointer id: [docs/canvas.md](docs/canvas.md) "Touches"), `.focused()`,
 `.on_key()` (the non-text keys, delivered only while THIS piece has focus — [docs/menus.md](docs/menus.md)),
 `.keyboard()` (a canvas takes the whole keyboard while focused: every key, the text a press
 typed kept apart from the key's name, and the soft keyboard on a phone — "The full route" in
@@ -2533,6 +2533,15 @@ pub enum Event {
 > screen, with a trackpad's lone rotate tick as a `Changed` carrying its own angle. It comes with
 > `GestureKind::Rotate`, `Decorate::on_rotate` and the dayscript `rotate` step; every backend
 > runs it alongside the pinch rather than competing with it ([docs/canvas.md](docs/canvas.md) "Zoom and pan").
+
+> [!NOTE]
+> `Touch { phase, pointer, location }` (2026-11) is every finger on its own, for a node that
+> asked with `Decorate::on_touch` (`TreeOps::enable_touches`, `Toolkit::enable_touches`, default
+> nothing). `pointer` names a finger from `Began` to `Ended`, the smallest free id first; a
+> cancel ends every finger still down. Where a backend reports touches they replace the node's
+> `Tap` and one-finger `Drag`; the pinch, rotation and two-finger pan run beside them. UIKit and
+> Android report them; every other backend keeps its taps and drags
+> ([docs/canvas.md](docs/canvas.md) "Touches").
 
 The single sink keeps the backend ignorant of closures/lifetimes (day-core owns the `NodeId →
 handlers` table) — this is the shape that made pane's six backends small. The sink contract is

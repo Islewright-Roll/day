@@ -342,7 +342,8 @@ A key press carries two things, and keeps them apart. Its
 key: a key that types nothing by its web name
 ([`KeyEvent::NAMED`](https://docs.rs/day-spec/latest/day_spec/struct.KeyEvent.html#associatedconstant.NAMED):
 "Enter", "Tab", "Escape", "Backspace", "Delete", "Home", "End", "PageUp", "PageDown", "Insert",
-the arrows and "F1" through "F12"), a key that types by its unmodified character ("a", "A" under
+the arrows and "F1" through "F12"; Android also names its Menu key "ContextMenu", as the web
+does), a key that types by its unmodified character ("a", "A" under
 Shift, "8", "ü" on a layout that has one). Its
 [`text`](https://docs.rs/day-spec/latest/day_spec/struct.KeyEvent.html#structfield.text) is what
 the press typed, once the platform and the input method are done with it: the character, an

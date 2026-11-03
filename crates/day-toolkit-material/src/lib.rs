@@ -739,6 +739,7 @@ mod imp {
         static fn documentNavSuite(suite: android.view.View, new_label: JString, close_label: JString, can_add: jboolean),
         static fn enableGesture(v: android.view.View, id: jlong, is_drag: jboolean),
         static fn enableHover(v: android.view.View, id: jlong),
+        static fn enableTouches(v: android.view.View, id: jlong),
         static fn enableKeys(v: android.view.View, id: jlong),
         static fn enablePan(v: android.view.View, id: jlong),
         static fn enablePinch(v: android.view.View, id: jlong),
@@ -1974,17 +1975,19 @@ mod imp {
             // Gestures (docs/shapes.md): num = phase (0=tap 1=began 2=changed 3=ended,
             // 4/5/6 = pinch began/changed/ended, 8 = pan, 13/14/15 = rotate began/changed/
             // ended), string = "x,y,tx,ty" in px (for a pinch, "fx,fy,scale,0": the focus in px
-            // and the cumulative scale; for a rotation, "fx,fy,radians,0"). Convert to dp like
+            // and the cumulative scale; for a rotation, "fx,fy,radians,0"). A touch's
+            // (phases 20/21/22 = down/move/up) is "x,y,pointer". Convert to dp like
             // FrameChanged does.
             K_GESTURE => {
                 let text: String = string_of(env, jstr).ok().unwrap_or_default();
                 let p: Vec<f64> = text.split(',').filter_map(|s| s.parse().ok()).collect();
-                if p.len() < 4 {
+                let touch = (20..=22).contains(&(num as i32));
+                if p.len() < if touch { 3 } else { 4 } {
                     return;
                 }
                 let d = DENSITY.with(std::cell::Cell::get);
                 let at = Point::new(p[0] / d, p[1] / d);
-                let tr = Point::new(p[2] / d, p[3] / d);
+                let tr = Point::new(p[2] / d, p.get(3).copied().unwrap_or(0.0) / d);
                 match num as i32 {
                     0 => Event::Tap(at),
                     // Pinch (docs/canvas.md "Zoom and pan"): the ScaleGestureDetector's focus
@@ -2028,6 +2031,16 @@ mod imp {
                     },
                     12 => Event::Hover {
                         phase: day_spec::DragPhase::Ended,
+                        location: at,
+                    },
+                    // Touches (`enableTouches`): the third field is the finger's pointer id.
+                    20..=22 => Event::Touch {
+                        phase: match num as i32 {
+                            20 => day_spec::DragPhase::Began,
+                            21 => day_spec::DragPhase::Changed,
+                            _ => day_spec::DragPhase::Ended,
+                        },
+                        pointer: p[2] as u32,
                         location: at,
                     },
                     1 => Event::Drag {
@@ -4693,6 +4706,10 @@ mod imp {
             let key = h.0.as_obj().as_raw() as usize;
             BUTTON_MENU_FNS.with(|menus| menus.insert(key, f));
             bridge(|env| DayBridge::setButtonMenu(env, h.0.as_obj(), key as i64));
+        }
+
+        fn enable_touches(&mut self, h: &AHandle, node: NodeId) {
+            bridge(|env| DayBridge::enableTouches(env, h.0.as_obj(), node.0 as i64));
         }
 
         fn set_context_menu(&mut self, h: &AHandle, _node: NodeId, items: &[day_spec::MenuItem]) {

@@ -205,6 +205,10 @@ mod imp {
         /// Keeps each view's gesture targets alive + records which are attached (idempotent).
         static GESTURES: RefCell<HashMap<usize, Vec<Retained<DayGesture>>>> =
             RefCell::new(HashMap::new());
+        /// The views reporting every finger (`enable_touches`), each with its recognizer kept
+        /// alive. Their tap and one-finger drag recognizers stay off: touches replace them.
+        static TOUCHES: RefCell<HashMap<usize, Retained<DayTouches>>> =
+            RefCell::new(HashMap::new());
         /// Per-view context-menu interaction + its delegate (kept alive; replaced on
         /// reconfigure, swept on release via `day_spec::sidetable`). The teardown detaches
         /// the interaction from its view first, so a recycled address can never serve a dead
@@ -3529,6 +3533,145 @@ mod imp {
             let this = Self::alloc(mtm).set_ivars(GestureIvars { node, kind });
             unsafe { msg_send![super(this), init] }
         }
+    }
+
+    // -----------------------------------------------------------------------
+    // DayTouches: every finger on a view reported on its own as Event::Touch (enable_touches).
+    // A recognizer that never recognizes: it watches the touches without claiming them, and
+    // fails once the last finger lifts so UIKit resets it for the next.
+    // -----------------------------------------------------------------------
+
+    struct TouchesIvars {
+        node: NodeId,
+        /// Each finger down now (its `UITouch`'s address) and the pointer id it was given: the
+        /// smallest not in use, as Android numbers them.
+        down: RefCell<Vec<(usize, u32)>>,
+    }
+
+    define_class!(
+        #[unsafe(super(UIGestureRecognizer))]
+        #[thread_kind = MainThreadOnly]
+        #[name = "DayUIKitTouches"]
+        #[ivars = TouchesIvars]
+        struct DayTouches;
+
+        impl DayTouches {
+            #[unsafe(method(touchesBegan:withEvent:))]
+            fn touches_began(
+                &self,
+                touches: &objc2_foundation::NSSet<objc2_ui_kit::UITouch>,
+                _event: Option<&objc2_ui_kit::UIEvent>,
+            ) {
+                day_spec::ffi_guard::contain((), || {
+                    self.report(touches, day_spec::DragPhase::Began);
+                });
+            }
+
+            #[unsafe(method(touchesMoved:withEvent:))]
+            fn touches_moved(
+                &self,
+                touches: &objc2_foundation::NSSet<objc2_ui_kit::UITouch>,
+                _event: Option<&objc2_ui_kit::UIEvent>,
+            ) {
+                day_spec::ffi_guard::contain((), || {
+                    self.report(touches, day_spec::DragPhase::Changed);
+                });
+            }
+
+            #[unsafe(method(touchesEnded:withEvent:))]
+            fn touches_ended(
+                &self,
+                touches: &objc2_foundation::NSSet<objc2_ui_kit::UITouch>,
+                _event: Option<&objc2_ui_kit::UIEvent>,
+            ) {
+                day_spec::ffi_guard::contain((), || {
+                    self.report(touches, day_spec::DragPhase::Ended);
+                });
+            }
+
+            #[unsafe(method(touchesCancelled:withEvent:))]
+            fn touches_cancelled(
+                &self,
+                touches: &objc2_foundation::NSSet<objc2_ui_kit::UITouch>,
+                _event: Option<&objc2_ui_kit::UIEvent>,
+            ) {
+                day_spec::ffi_guard::contain((), || {
+                    self.report(touches, day_spec::DragPhase::Ended);
+                });
+            }
+
+            #[unsafe(method(reset))]
+            fn reset(&self) {
+                // A sequence UIKit ended under us (the view went away): its fingers are gone.
+                self.ivars().down.borrow_mut().clear();
+                let _: () = unsafe { msg_send![super(self), reset] };
+            }
+        }
+    );
+
+    impl DayTouches {
+        fn new(mtm: MainThreadMarker, node: NodeId) -> Retained<Self> {
+            let this = Self::alloc(mtm).set_ivars(TouchesIvars {
+                node,
+                down: RefCell::new(Vec::new()),
+            });
+            unsafe {
+                msg_send![super(this), initWithTarget: None::<&AnyObject>, action: None::<Sel>]
+            }
+        }
+
+        fn report(
+            &self,
+            touches: &objc2_foundation::NSSet<objc2_ui_kit::UITouch>,
+            phase: day_spec::DragPhase,
+        ) {
+            let node = self.ivars().node;
+            let view = unsafe { self.view() };
+            for t in &*touches.allObjects() {
+                let key = Retained::as_ptr(&t) as usize;
+                let pointer = {
+                    let mut down = self.ivars().down.borrow_mut();
+                    let known = down.iter().position(|&(k, _)| k == key);
+                    match (phase, known) {
+                        (day_spec::DragPhase::Began, None) => {
+                            // One of the first len + 1 ids is always free.
+                            let last = u32::try_from(down.len()).unwrap_or(u32::MAX);
+                            let id = (0..=last)
+                                .find(|i| down.iter().all(|&(_, d)| d != *i))
+                                .unwrap_or(0);
+                            down.push((key, id));
+                            id
+                        }
+                        (day_spec::DragPhase::Ended, Some(i)) => down.remove(i).1,
+                        (_, Some(i)) => down[i].1,
+                        // A move or a lift of a finger this never saw go down
+                        (_, None) => continue,
+                    }
+                };
+                let loc = unsafe { t.locationInView(view.as_deref()) };
+                emit(
+                    node,
+                    Event::Touch {
+                        phase,
+                        pointer,
+                        location: day_spec::Point::new(loc.x, loc.y),
+                    },
+                );
+            }
+            if phase == day_spec::DragPhase::Ended && self.ivars().down.borrow().is_empty() {
+                // Never recognized: failing ends this sequence, and UIKit resets it.
+                let _: () = unsafe { msg_send![self, setState: UIGestureRecognizerState::Failed] };
+            }
+        }
+    }
+
+    /// Whether `g` is a recognizer that touches replace: a tap, or a one-finger drag.
+    fn replaced_by_touches(g: &UIGestureRecognizer) -> bool {
+        let obj: &AnyObject = g.as_ref();
+        obj.downcast_ref::<UITapGestureRecognizer>().is_some()
+            || obj
+                .downcast_ref::<UIPanGestureRecognizer>()
+                .is_some_and(|p| unsafe { p.minimumNumberOfTouches() } < 2)
     }
 
     // -----------------------------------------------------------------------
@@ -13696,6 +13839,9 @@ mod imp {
             GESTURES.with(|m| {
                 m.borrow_mut().remove(&ptr_of(&h));
             });
+            TOUCHES.with(|m| {
+                m.borrow_mut().remove(&ptr_of(&h));
+            });
             // One sweep clears every `day_spec::sidetable::SideTable` on this thread —
             // CTX_MENUS (whose teardown detaches the interaction from the view first),
             // PAGE_PANE, canvas OPS, and the picker/textarea state tables — present and
@@ -14554,8 +14700,37 @@ mod imp {
                 };
                 h.setUserInteractionEnabled(true);
                 h.addGestureRecognizer(&recognizer);
+                // A view reporting every finger keeps its taps and drags off.
+                if TOUCHES.with(|t| t.borrow().contains_key(&key))
+                    && replaced_by_touches(&recognizer)
+                {
+                    recognizer.setEnabled(false);
+                }
             }
             GESTURES.with(|m| m.borrow_mut().entry(key).or_default().push(target));
+        }
+
+        fn enable_touches(&mut self, h: &Handle, node: NodeId) {
+            let key = ptr_of(h);
+            if TOUCHES.with(|t| t.borrow().contains_key(&key)) {
+                return;
+            }
+            let touches = DayTouches::new(mtm(), node);
+            unsafe {
+                touches.setCancelsTouchesInView(false);
+                touches.setDelaysTouchesEnded(false);
+                h.setUserInteractionEnabled(true);
+                h.setMultipleTouchEnabled(true);
+                if let Some(existing) = h.gestureRecognizers() {
+                    for g in &*existing {
+                        if replaced_by_touches(&g) {
+                            g.setEnabled(false);
+                        }
+                    }
+                }
+                h.addGestureRecognizer(&touches);
+            }
+            TOUCHES.with(|t| t.borrow_mut().insert(key, touches));
         }
 
         fn set_context_menu_fn(&mut self, h: &Handle, _node: NodeId, f: day_spec::ContextMenuFn) {

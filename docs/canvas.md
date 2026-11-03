@@ -324,6 +324,39 @@ The reference use is [`day-pieces`](/docs/reference/colorpicker)'s composed pane
 ([docs/colorpicker](colorpicker.md)): its saturation/brightness field, hue strip and opacity
 strip are three canvases that read their value straight out of the press location.
 
+### Touches
+
+A canvas that follows several fingers at once (a game board, a drawing surface, a piano) asks
+for every touch on its own with
+[`.on_touch`](https://docs.rs/day-pieces/latest/day_pieces/trait.Decorate.html#method.on_touch):
+
+```rust
+canvas(draw).on_touch(move |t: Touch| match t.phase {
+    DragPhase::Began => fingers.update(|f| f.insert(t.pointer, t.location)),
+    DragPhase::Changed => fingers.update(|f| f.insert(t.pointer, t.location)),
+    DragPhase::Ended => fingers.update(|f| f.remove(&t.pointer)),
+})
+```
+
+Each finger reports its own `Began`, moves and `Ended`, with the
+[`Touch`](https://docs.rs/day-pieces/latest/day_pieces/struct.Touch.html)'s `pointer` naming it
+from the first to the last; a released id is handed to the next finger down, the smallest free
+one first, as Android numbers them. `location` is in the canvas's own coordinates. A cancelled
+sequence (a system gesture took over) ends every finger still down, so a handler never keeps a
+finger that has gone.
+
+Where a toolkit reports touches, they **replace** the canvas's taps and one-finger drags: those
+handlers stop firing on that node, and the touch handler sees the same presses. A pinch, a
+rotation, a two-finger pan, a context menu and hover keep working beside it. Elsewhere the
+touch handler never fires and taps and drags carry on, so a canvas that must also work with a
+mouse keeps its [`.on_tap_at`](https://docs.rs/day-pieces/latest/day_pieces/trait.Decorate.html#method.on_tap_at) and [`.on_drag`](https://docs.rs/day-pieces/latest/day_pieces/trait.Decorate.html#method.on_drag) too.
+
+| Toolkit | Touches | Underneath |
+| --- | --- | --- |
+| uikit | ✓ | a `UIGestureRecognizer` that watches `touchesBegan`/`Moved`/`Ended`/`Cancelled` and never recognizes, so it claims nothing from the recognizers beside it; the view's tap and one-finger pan recognizers are disabled |
+| android | ✓ | the view's shared touch listener: `ACTION_DOWN`/`POINTER_DOWN`, every pointer on `ACTION_MOVE`, `ACTION_UP`/`POINTER_UP`, and `ACTION_CANCEL` for every finger left |
+| appkit, gtk, qt, WinUI, dom, arkui | (taps and drags) | not wired yet: the toolkit hook `enable_touches` defaults to nothing |
+
 ### Zoom and pan
 
 Two continuous gestures serve a canvas that is a viewport onto something larger (a drawing, a
