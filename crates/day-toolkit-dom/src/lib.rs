@@ -4985,6 +4985,7 @@ fn encode_ops(ops: &[DrawOp]) -> (Vec<f64>, Vec<u8>) {
                 image,
                 rect,
                 opacity,
+                smooth,
             } => buf.extend([
                 8.0,
                 image.0 as f64,
@@ -4993,6 +4994,7 @@ fn encode_ops(ops: &[DrawOp]) -> (Vec<f64>, Vec<u8>) {
                 rect.size.width,
                 rect.size.height,
                 *opacity,
+                if *smooth { 0.0 } else { 1.0 },
             ]),
             DrawOp::Concat(m) => buf.extend([5.0, m.a, m.b, m.c, m.d, m.tx, m.ty]),
         }

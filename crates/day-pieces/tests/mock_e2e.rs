@@ -9699,6 +9699,7 @@ fn a_canvas_draws_a_decoded_image_by_its_handle() {
             image,
             rect,
             opacity,
+            smooth,
         }) => {
             // The id is the one the toolkit minted for these bytes, and the rect is the
             // canvas's size the draw closure was handed.
@@ -9708,6 +9709,7 @@ fn a_canvas_draws_a_decoded_image_by_its_handle() {
             );
             assert_eq!(rect.size, Size::new(120.0, 90.0));
             assert_eq!(*opacity, 1.0);
+            assert!(*smooth);
         }
         other => panic!("expected an image op, got {other:?}"),
     }

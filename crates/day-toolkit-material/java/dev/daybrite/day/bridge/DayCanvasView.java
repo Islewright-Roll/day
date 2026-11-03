@@ -520,7 +520,7 @@ public class DayCanvasView extends View {
                         }
                         break;
                     }
-                    case 22: { // image: a,b origin · c,d size · e the BitmapId · f opacity (docs/images.md)
+                    case 22: { // image: a,b origin · c,d size · e the BitmapId · f opacity · g 1 = nearest (docs/images.md)
                         android.graphics.Bitmap bmp = DayBridge.bitmapFor((long) e);
                         // A released bitmap draws nothing rather than a placeholder: the canvas
                         // re-records on every tracked read, so a handle can be dropped between the
@@ -531,6 +531,9 @@ public class DayCanvasView extends View {
                             // shader and stroke state this op has no business touching. Images are
                             // rare in a display list, so the allocation is not on a hot path.
                             Paint ip = new Paint(Paint.FILTER_BITMAP_FLAG);
+                            // Pixel art asks for nearest-neighbour sampling. Said outright: since
+                            // API 28 a Paint adds the filter flag to whatever flags it is given.
+                            ip.setFilterBitmap(g == 0);
                             ip.setAlpha((int) Math.round(Math.max(0f, Math.min(1f, f)) * 255f));
                             cv.drawBitmap(bmp, null, new RectF(a, b, a + c, b + d), ip);
                         }

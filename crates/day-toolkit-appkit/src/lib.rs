@@ -5687,6 +5687,8 @@ fn draw_op(op: &DrawOp) {
                 image,
                 rect,
                 opacity,
+                // Not yet honoured here: Core Graphics draws it smoothed (DrawOp::Image)
+                smooth: _,
             } => {
                 let img = BITMAPS.with(|m| m.borrow().get(&image.0).map(|b| b.image.clone()));
                 if let Some(img) = img {

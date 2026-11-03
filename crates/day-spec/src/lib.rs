@@ -4644,10 +4644,15 @@ pub enum DrawOp {
     ///
     /// `opacity` multiplies the image's own alpha. A backend that cannot draw a bitmap at all
     /// draws nothing rather than a placeholder rectangle, the same way an unknown op is skipped.
+    ///
+    /// `smooth` false asks for nearest-neighbour sampling when the image is scaled, so pixel
+    /// art drawn at a whole multiple of its size keeps hard edges. A backend that cannot turn
+    /// filtering off draws it smoothed, which is the picture blurred, never missing.
     Image {
         image: BitmapId,
         rect: Rect,
         opacity: f64,
+        smooth: bool,
     },
     /// Intersect the clip with `shape`; everything drawn afterwards is confined to it.
     ///
@@ -8871,7 +8876,7 @@ pub enum OpCode {
     /// [`OpCode::Stamp`] header says how many of the pairs are real.
     StampPoints = 21,
     /// Draw a decoded image: `a,b` = origin, `c,d` = size, `e` = the [`BitmapId`], `f` = opacity
-    /// in `0.0..=1.0` (docs/images.md).
+    /// in `0.0..=1.0`, `g` = 1 for nearest-neighbour sampling and 0 for smoothed (docs/images.md).
     ///
     /// The id rides the numeric channel because it is a number, and an `f64` carries a `u64` id
     /// exactly up to 2^53; ids are minted from 1 per process, so that ceiling is unreachable.
@@ -9512,6 +9517,7 @@ pub fn encode_ops(ops: &[DrawOp]) -> (Vec<f64>, Vec<String>) {
                 image,
                 rect,
                 opacity,
+                smooth,
             } => push(
                 OpCode::Image,
                 rect.origin.x,
@@ -9520,7 +9526,8 @@ pub fn encode_ops(ops: &[DrawOp]) -> (Vec<f64>, Vec<String>) {
                 rect.size.height,
                 image.0 as f64,
                 *opacity,
-                0.0,
+                // g: 1 for nearest-neighbour sampling, 0 (every older record) for smoothed
+                if *smooth { 0.0 } else { 1.0 },
                 Color::CLEAR,
                 &mut nums,
             ),
@@ -9834,6 +9841,7 @@ mod encode_ops_tests {
                 image: BitmapId(7),
                 rect: r,
                 opacity: 0.5,
+                smooth: false,
             },
         ];
         let (nums, texts) = encode_ops(&ops);
@@ -9898,7 +9906,7 @@ mod encode_ops_tests {
             .chunks(9)
             .find(|r| r[0] == OpCode::Image as i32 as f64)
             .expect("Image record");
-        assert_eq!(&img[1..7], &[1.0, 2.0, 3.0, 4.0, 7.0, 0.5]);
+        assert_eq!(&img[1..8], &[1.0, 2.0, 3.0, 4.0, 7.0, 0.5, 1.0]);
         // …carrying the CSS weight and the slant, with the family on the texts channel.
         let font_rec = nums
             .chunks(9)

@@ -9892,6 +9892,7 @@ mod imp {
                     image,
                     rect,
                     opacity,
+                    smooth,
                 } => {
                     let img = BITMAPS.with(|m| m.borrow().get(&image.0).map(|b| b.image.clone()));
                     if let Some(img) = img {
@@ -9901,11 +9902,21 @@ mod imp {
                         );
                         // UIImage's plain drawInRect always draws at full opacity, even if
                         // CGContext's alpha was set. Use its explicit compositing overload.
+                        // Pixel art asks for no filtering; the save scopes it to this one image
+                        let ctx = objc2_ui_kit::UIGraphicsGetCurrentContext();
+                        CGContext::save_g_state(ctx.as_deref());
+                        if !*smooth {
+                            CGContext::set_interpolation_quality(
+                                ctx.as_deref(),
+                                objc2_core_graphics::CGInterpolationQuality::None,
+                            );
+                        }
                         img.drawInRect_blendMode_alpha(
                             dest,
                             objc2_core_graphics::CGBlendMode::Normal,
                             *opacity,
                         );
+                        CGContext::restore_g_state(ctx.as_deref());
                     }
                 }
                 DrawOp::Save => {
