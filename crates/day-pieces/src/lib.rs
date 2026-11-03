@@ -133,7 +133,7 @@ pub mod prelude {
         NavStyle, OpenFile, OpenFiles, OpenFolder, Pan, PathBuilder, Pinch, ProgressBuilder,
         Prompt, Reactive, Reorder, ReorderVerdict, Route, RoutePath, RowBuilder, RowFit, SaveFile,
         Search, SearchReveal, Sections, ShapeKind, ShapePiece, StatusItem, SwipeAction,
-        TextBuilder, VAlign, VectorWeight, When, ZStack, adaptive, alert, app_environment,
+        TextBuilder, Touch, VAlign, VectorWeight, When, ZStack, adaptive, alert, app_environment,
         app_menu, arc, button, canvas, capsule, circle, column, confirm, cover, current_route,
         divider, dock_menu, each, ellipse, environment, focused_environment, form, frame_clock,
         grid, grid_row, image, inspector, item, items, keyed, label, labeled, line, link, list,

@@ -704,6 +704,7 @@ mod imp {
         static fn documentNavSuite(suite: android.view.View, new_label: JString, close_label: JString, can_add: jboolean),
         static fn enableGesture(v: android.view.View, id: jlong, is_drag: jboolean),
         static fn enableHover(v: android.view.View, id: jlong),
+        static fn enableTouches(v: android.view.View, id: jlong),
         static fn enableKeys(v: android.view.View, id: jlong),
         static fn enablePan(v: android.view.View, id: jlong),
         static fn focusNavSearch(nav_host: android.view.View),
@@ -1816,16 +1817,18 @@ mod imp {
                 }
             }
             // Gestures (docs/shapes.md): num = phase (0=tap 1=began 2=changed 3=ended),
-            // string = "x,y,tx,ty" in px. Convert to dp like FrameChanged does.
+            // string = "x,y,tx,ty" in px (a touch's is "x,y,pointer"). Convert to dp like
+            // FrameChanged does.
             K_GESTURE => {
                 let text: String = string_of(env, jstr).ok().unwrap_or_default();
                 let p: Vec<f64> = text.split(',').filter_map(|s| s.parse().ok()).collect();
-                if p.len() < 4 {
+                let touch = (20..=22).contains(&(num as i32));
+                if p.len() < if touch { 3 } else { 4 } {
                     return;
                 }
                 let d = DENSITY.with(|x| x.get());
                 let at = Point::new(p[0] / d, p[1] / d);
-                let tr = Point::new(p[2] / d, p[3] / d);
+                let tr = Point::new(p[2] / d, p.get(3).copied().unwrap_or(0.0) / d);
                 match num as i32 {
                     0 => Event::Tap(at),
                     8 => Event::Pan {
@@ -1846,6 +1849,16 @@ mod imp {
                     },
                     12 => Event::Hover {
                         phase: day_spec::DragPhase::Ended,
+                        location: at,
+                    },
+                    // Touches (`enableTouches`): the third field is the finger's pointer id.
+                    20..=22 => Event::Touch {
+                        phase: match num as i32 {
+                            20 => day_spec::DragPhase::Began,
+                            21 => day_spec::DragPhase::Changed,
+                            _ => day_spec::DragPhase::Ended,
+                        },
+                        pointer: p[2] as u32,
                         location: at,
                     },
                     1 => Event::Drag {
@@ -4398,6 +4411,10 @@ mod imp {
             }
             let is_drag = matches!(kind, day_spec::GestureKind::Drag);
             bridge(|env| DayBridge::enableGesture(env, h.0.as_obj(), node.0 as i64, is_drag));
+        }
+
+        fn enable_touches(&mut self, h: &AHandle, node: NodeId) {
+            bridge(|env| DayBridge::enableTouches(env, h.0.as_obj(), node.0 as i64));
         }
 
         fn set_context_menu(&mut self, h: &AHandle, _node: NodeId, items: &[day_spec::MenuItem]) {

@@ -2536,6 +2536,17 @@ fn build_android_so(
     out: &Path,
     abis: &[String],
 ) -> Result<(), String> {
+    // Gradle packages every `out/<abi>/` it finds, so a library left from an earlier build for
+    // another device (an emulator's x86_64 while this one targets a phone) would ship in the APK,
+    // stale and unseen. Clear the ABIs this build does not make.
+    if let Ok(entries) = std::fs::read_dir(out) {
+        for entry in entries.flatten() {
+            let abi = entry.file_name();
+            if entry.path().is_dir() && !abis.iter().any(|a| abi == a.as_str()) {
+                let _ = std::fs::remove_dir_all(entry.path());
+            }
+        }
+    }
     let (cargo, bin) = rustup_cargo()?;
     // The std for every ABI cargo-ndk is about to build, added when missing.
     let triples: Vec<&str> = abis.iter().filter_map(|a| android_abi_triple(a)).collect();

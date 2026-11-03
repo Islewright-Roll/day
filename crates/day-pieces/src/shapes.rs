@@ -158,6 +158,16 @@ pub struct Drag {
     pub translation: Point,
 }
 
+/// One finger's event, delivered to an `.on_touch(…)` handler (docs/shapes.md). `pointer`
+/// names the finger from `Began` to `Ended`, so two fingers down at once can be told apart.
+/// `location` is in the node's local coordinates.
+#[derive(Clone, Copy, Debug)]
+pub struct Touch {
+    pub phase: DragPhase,
+    pub pointer: u32,
+    pub location: Point,
+}
+
 /// One pinch-gesture event, delivered to a `.on_pinch(…)` handler (docs/shapes.md). `scale`
 /// is cumulative since `Began` (1.0 = unchanged); `location` is the centroid, the anchor a
 /// zoom keeps stationary.

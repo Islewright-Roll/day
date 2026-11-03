@@ -853,6 +853,9 @@ pub trait TreeOps {
     /// Attach a native gesture recognizer to `node` (docs/shapes.md): the backend then emits
     /// `Event::Tap/LongPress/Drag` for it. The node must have a native handle.
     fn enable_gesture(&mut self, node: RNode, kind: day_spec::GestureKind);
+    /// Ask the backend to report every finger on `node` as `Event::Touch` (docs/shapes.md), in
+    /// place of its taps and drags where it can. A backend that cannot keeps those.
+    fn enable_touches(&mut self, node: RNode);
     /// Move native keyboard focus to (or away from) `node` (docs/focus.md).
     fn focus_node(&mut self, node: RNode, focused: bool);
     /// Opt a container into the platform's focus system (docs/focus.md); what
@@ -1694,6 +1697,24 @@ impl<B: Toolkit> TreeOps for Tree<B> {
             "enable_gesture({kind:?}) found no native view under the target node — \
              the gesture will not fire natively (attach it to a piece with a native handle)"
         );
+    }
+
+    fn enable_touches(&mut self, node: RNode) {
+        // The same descent as `enable_gesture`: attach to the nearest native view, deliver
+        // against the node that registered the handler.
+        let mut cur = node;
+        for _ in 0..16 {
+            let Some(n) = self.nodes.get(cur) else { return };
+            if let Some(h) = n.handle.clone() {
+                self.toolkit.enable_touches(&h, rnode_to_id(node));
+                return;
+            }
+            match n.children.as_slice() {
+                [only] => cur = *only,
+                _ => break,
+            }
+        }
+        log::warn!("enable_touches found no native view under the target node");
     }
 
     fn focus_node(&mut self, node: RNode, focused: bool) {

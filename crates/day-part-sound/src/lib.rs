@@ -204,6 +204,21 @@ pub fn play_with(clip: &AssetName, opts: Play) {
     imp::play(path, volume, pan, opts.priority);
 }
 
+/// Play `clip` from its start, first silencing any earlier play of it that is still sounding,
+/// so a quick run of the same sound restarts it each time instead of stacking copies. Engines
+/// that cannot silence one clip (HarmonyOS so far) overlap them, as [`play`] does.
+pub fn restart(clip: &AssetName) {
+    restart_with(clip, Play::default());
+}
+
+/// [`restart`] played as `opts` says.
+pub fn restart_with(clip: &AssetName, opts: Play) {
+    if is_enabled() {
+        imp::stop(clip.as_str());
+    }
+    play_with(clip, opts);
+}
+
 /// The master volume, 0 to 1, that every play is scaled by. A loop already sounding follows it.
 pub fn set_volume(volume: f32) {
     if volume.is_finite() {
@@ -558,6 +573,15 @@ mod mixer {
             }
         }
 
+        /// Fade out every clip played once from `samples` (its loops keep going).
+        pub fn stop(&mut self, samples: &Arc<Vec<f32>>) {
+            for v in &mut self.voices {
+                if !v.looping && Arc::ptr_eq(&v.samples, samples) {
+                    v.ending = true;
+                }
+            }
+        }
+
         /// The next `out.len() / 2` frames of everything sounding, as interleaved 16-bit stereo,
         /// advancing every voice by that much and dropping the ones that finished.
         pub fn render(&mut self, out: &mut [i16]) {
@@ -608,7 +632,7 @@ fn now_ms() -> Option<u64> {
 }
 
 // ---------------------------------------------------------------------------
-// Per-platform engines. Each exposes `supported`, `preload`, `play`, `unload_all`, and the three
+// Per-platform engines. Each exposes `supported`, `preload`, `play`, `stop`, `unload_all`, and the three
 // loop calls `loop_start`, `loop_set` and `loop_stop`, which name a loop by the id `play_loop`
 // gave it. `loop_stop` runs from `Loop`'s destructor, so it must be safe during thread teardown.
 // ---------------------------------------------------------------------------
@@ -649,6 +673,10 @@ mod imp {
         super::play_native(path, volume, pan, priority);
     }
 
+    pub fn stop(path: &str) {
+        super::stop_native(path);
+    }
+
     pub fn unload_all() {
         super::unload_native();
     }
@@ -673,6 +701,8 @@ day_bridge::bridge! {
     extern "day" {
         fn preload_native(path: &str);
         fn play_native(path: &str, volume: f32, pan: f32, priority: i32);
+        /// Silence every play of the clip still sounding (not its loops).
+        fn stop_native(path: &str);
         fn unload_native();
         /// Repeat the clip as loop `id` until `loop_stop_native(id)`, starting once it is loaded.
         fn loop_start_native(id: i32, path: &str, volume: f32, pan: f32);
@@ -710,6 +740,8 @@ day_bridge::bridge! {
             private static SoundPool pool = null;
             private static final HashMap<String, Integer> ids = new HashMap<>();
             private static final HashSet<Integer> loaded = new HashSet<>();
+            /** The streams each clip was last played on, newest last, for `stop_native`. */
+            private static final HashMap<String, java.util.ArrayDeque<Integer>> streams = new HashMap<>();
 
             /** One loop: what was asked for, and the stream sounding it (0 until its clip loads). */
             private static final class Looping {
@@ -836,7 +868,31 @@ day_bridge::bridge! {
                 }
                 float left = volume * Math.min(1f, 1f - pan);
                 float right = volume * Math.min(1f, 1f + pan);
-                pool.play(id, left, right, priority, 0, 1f);
+                int stream = pool.play(id, left, right, priority, 0, 1f);
+                if (stream != 0) {
+                    java.util.ArrayDeque<Integer> mine = streams.get(path);
+                    if (mine == null) {
+                        mine = new java.util.ArrayDeque<>();
+                        streams.put(path, mine);
+                    }
+                    // The pool has twelve streams; older ids than that are long reused.
+                    if (mine.size() == 12) {
+                        mine.removeFirst();
+                    }
+                    mine.addLast(stream);
+                }
+            }
+
+            public static void stop_native(String path) {
+                java.util.ArrayDeque<Integer> mine = streams.remove(path);
+                if (mine == null || pool == null) {
+                    return;
+                }
+                // Stopping a stream that already ended, or was taken for another clip's, is a
+                // no-op: SoundPool ids are never reused within a pool.
+                for (int stream : mine) {
+                    pool.stop(stream);
+                }
             }
 
             public static void loop_start_native(int id, String path, float volume, float pan) {
@@ -1022,6 +1078,11 @@ day_bridge::bridge! {
                 dayPool.play(id, params).catch((e: Error) => {
                     console.warn(`day-part-sound: ${path}: ${e.message}`);
                 });
+            }
+
+            // OHOS SoundPool returns its stream ids through a promise; not wired yet, so a restart
+            // overlaps the earlier play here.
+            export function stop_native(path: string): void {
             }
 
             export function loop_start_native(id: number, path: string, volume: number, pan: number): void {
@@ -1224,7 +1285,7 @@ day_bridge::bridge! {
             const source = ctx.createBufferSource();
             source.buffer = buffer;
             dayRoute(ctx, source, volume, pan);
-            const voice = { source, priority };
+            const voice = { source, priority, path };
             dayVoices.push(voice);
             source.onended = () => {
                 const i = dayVoices.indexOf(voice);
@@ -1233,6 +1294,14 @@ day_bridge::bridge! {
                 }
             };
             source.start();
+        }
+
+        export function stop_native(path) {
+            for (const voice of dayVoices.filter((v) => v.path === path)) {
+                voice.source.stop();
+            }
+            // A restart is a new play, not a repeat of the one it silenced.
+            dayLast.delete(path);
         }
 
         export function loop_start_native(id, path, volume, pan) {
@@ -1293,6 +1362,9 @@ day_bridge::bridge! {
 
     #[day_bridge::impl(rust, platforms = [other])]
     fn play_native(_path: &str, _volume: f32, _pan: f32, _priority: i32) {}
+
+    #[day_bridge::impl(rust, platforms = [other])]
+    fn stop_native(_path: &str) {}
 
     #[day_bridge::impl(rust, platforms = [other])]
     fn unload_native() {}
@@ -1620,6 +1692,22 @@ mod tests {
         assert!(close(&left, &[0.5, 0.375, 0.25, 0.125]), "{left:?}");
         assert!(mix.voices.is_empty());
         assert!(close(&[render(&mut mix, 1)[0].0], &[0.0]));
+    }
+
+    #[test]
+    fn stopping_a_clip_fades_its_plays_and_leaves_others_and_loops() {
+        let mut mix = mixer::Mix::default();
+        let clip = flat(100, 1.0);
+        let other = flat(100, 1.0);
+        mix.loop_start(1, clip.clone(), (1.0, 1.0));
+        assert!(mix.play(clip.clone(), (1.0, 1.0), 0));
+        assert!(mix.play(clip.clone(), (1.0, 1.0), 0));
+        assert!(mix.play(other, (1.0, 1.0), 0));
+        mix.stop(&clip);
+        let ending: Vec<bool> = mix.voices.iter().map(|v| v.ending).collect();
+        assert_eq!(ending, [false, true, true, false]);
+        render(&mut mix, 4);
+        assert_eq!(mix.voices.len(), 2, "the loop and the other clip keep sounding");
     }
 
     #[test]

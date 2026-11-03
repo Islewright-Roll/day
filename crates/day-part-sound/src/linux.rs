@@ -372,6 +372,14 @@ pub fn play(path: &str, volume: f32, pan: f32, priority: i32) {
     with_engine(|e| e.play(path, volume, pan, priority));
 }
 
+pub fn stop(path: &str) {
+    with_engine(|e| {
+        if let Some(clip) = e.load(path) {
+            e.mixer.state().mix.stop(&clip);
+        }
+    });
+}
+
 pub fn loop_start(id: i32, path: &str, volume: f32, pan: f32) {
     with_engine(|e| e.loop_start(id, path, volume, pan));
 }
