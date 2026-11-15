@@ -426,6 +426,21 @@ before tagging; an app that sets only [`title`](https://docs.rs/day-spec/latest/
 | ArkUI | Additional abilities when the host registers the launchers; Preferences uses a cover. |
 | Web | Covers within the app page. |
 
+### The surround on iOS
+
+Behind the safe-area-padded root, under the status bar and the home indicator, a UIKit window
+shows the system's grouped background. An app that paints its own surround (a game, a
+full-screen canvas) names the colour there with a `DayWindowBackground` string in
+`platform/ios/Runner/Info.plist`, as `#RRGGBB`:
+
+```xml
+<key>DayWindowBackground</key>
+<string>#1B2A3A</string>
+```
+
+It is the counterpart of Android's `android:windowBackground` in the app's theme. A missing or
+malformed value keeps the system colour.
+
 On macOS with GTK, native embedded views can cover an in-window dialog. Day presents affected
 alerts in separate windows. On HarmonyOS, check covers with actual device captures; interaction
 and capture behavior can differ.

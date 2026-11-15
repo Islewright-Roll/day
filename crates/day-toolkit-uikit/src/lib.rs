@@ -573,8 +573,27 @@ mod imp {
         (w > 0.0 && h > 0.0).then(|| Size::new(w, h))
     }
 
+    /// The colour behind the safe-area-padded root, from the bundle's `DayWindowBackground`
+    /// (`#RRGGBB`): what shows under the status bar and the home indicator. The counterpart of
+    /// Android's `android:windowBackground`, for an app that paints its own surround (a game,
+    /// a full-screen canvas) and would otherwise show the system's grouped background there.
+    fn plist_window_background() -> Option<Retained<UIColor>> {
+        let bundle = objc2_foundation::NSBundle::mainBundle();
+        let value = unsafe {
+            bundle.objectForInfoDictionaryKey(&NSString::from_str("DayWindowBackground"))
+        }?;
+        let s = value.downcast::<NSString>().ok()?.to_string();
+        let hex = s.trim().strip_prefix('#')?;
+        if hex.len() != 6 {
+            return None;
+        }
+        let rgb = u32::from_str_radix(hex, 16).ok()?;
+        let c = |shift: u32| f64::from((rgb >> shift) & 0xFF) / 255.0;
+        Some(unsafe { UIColor::colorWithRed_green_blue_alpha(c(16), c(8), c(0), 1.0) })
+    }
+
     /// Build one Day window into `scene`: `UIWindow` + `DayRootVC` + `DayHolderView` + the
-    /// safe-area-inset day root — the construction `didFinishLaunching` used to own,
+    /// safe-area-inset day root: the construction `didFinishLaunching` used to own,
     /// factored so every scene (primary and secondary) gets identical chrome.
     fn build_scene_window(
         mtm: MainThreadMarker,
@@ -627,7 +646,9 @@ mod imp {
             unsafe { window.setOverrideUserInterfaceStyle(style) };
         }
         unsafe {
-            holder.setBackgroundColor(Some(&UIColor::systemGroupedBackgroundColor()));
+            let surround =
+                plist_window_background().unwrap_or_else(UIColor::systemGroupedBackgroundColor);
+            holder.setBackgroundColor(Some(&surround));
             holder.addSubview(&root_view);
             vc.setView(Some(&holder));
             window.setRootViewController(Some(&vc));
@@ -9886,6 +9907,11 @@ mod imp {
             unsafe {
                 v.setBackgroundColor(Some(&UIColor::clearColor()));
                 v.setOpaque(false);
+                // A display list can arrive while the view is still zero-sized, before its
+                // first layout. UIKit's default mode only stretches the empty contents of that
+                // first `drawRect` when the frame then grows, so the canvas stayed blank until
+                // its next replay. Redraw on every bounds change instead.
+                v.setContentMode(objc2_ui_kit::UIViewContentMode::Redraw);
             }
             v
         }
